@@ -1,6 +1,6 @@
-# WebGL Learn
+# WebGPU Learn
 
-just a compiled source of WebGL tutorials and examples that I learned from books and tutorials.
+just a compiled source of WebGL/WebGPU tutorials and examples that I learned from books and tutorials.
 
 ## Table of Contents
 
