@@ -1,0 +1,67 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>WebGPU Life</title>
+  </head>
+  <body>
+    <!-- Canvas default size is 300x150 pixels -->
+    <canvas width="512" height="512"></canvas>
+    <!-- Moduled script allow await to be used in the top-level -->
+    <script type="module">
+      const canvas = document.querySelector("canvas");
+
+      if (!navigator.gpu) {
+        // If it's not supported, you could use webgl instead
+        // but let just throw an error for now
+        throw new Error("WebGPU not supported on this browser.");
+      }
+
+      // Request an adapter. This represents the actual GPU.
+      // If not specified, browser will pick its default.
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        throw new Error("No appropriate GPUAdapter found.");
+      }
+
+      // Request a device from the adapter. This represents a connection
+      // to the GPU and is used to create most objects.
+      const device = await adapter.requestDevice();
+
+      // Get a WebGPU context from the canvas
+      const context = canvas.getContext("webgpu");
+      // Get the preferred canvas format for the current device
+      // Format are the texture formats that let gpu know how the data is
+      // stored in memory. This is important for performance and compatibility
+      const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+      context.configure({
+        device: device,
+        format: canvasFormat,
+      });
+      // Note: One device can be used with multiple contexts/canvases
+
+      // Create a command encoder. This will be used to
+      // create a command buffer that will be submitted to the GPU
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [
+          {
+            view: context.getCurrentTexture().createView(),
+            clearValue: { r: 45 / 255, g: 108 / 255, b: 30 / 255, a: 1.0 },
+            loadOp: "clear", // means we want to clear the texture at the start of the pass
+            storeOp: "store", // means we want to store the result of the render pass
+          },
+        ],
+      });
+      pass.end();
+
+      // Finish the command buffer and submit it to the GPU
+      const commandBuffer = encoder.finish();
+      device.queue.submit([commandBuffer]);
+      // when submit a command buffer, it cannot be used again.
+      // so you need to create a new one for each frame
+
+      // For example, you could put the code above in a function
+      // device.queue.submit([encoder.finish()]);
+    </script>
+  </body>
+</html>
