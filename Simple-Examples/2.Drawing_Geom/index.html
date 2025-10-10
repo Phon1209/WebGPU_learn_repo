@@ -1,0 +1,146 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>WebGPU Life</title>
+  </head>
+  <body>
+    <canvas width="512" height="512"></canvas>
+    <script type="module">
+      const canvas = document.querySelector("canvas");
+
+      if (!navigator.gpu) {
+        throw new Error("WebGPU not supported on this browser.");
+      }
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        throw new Error("No appropriate GPUAdapter found.");
+      }
+
+      const device = await adapter.requestDevice();
+
+      const context = canvas.getContext("webgpu");
+      const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+      context.configure({
+        device: device,
+        format: canvasFormat,
+      });
+
+      // Define a square
+      // prettier-ignore
+      // const vertices = new Float32Array([
+      //   // x,    y
+      //   -0.8, -0.8,
+      //    0.8, -0.8,
+      //    0.8,  0.8,
+      //   -0.8,  0.8,
+      // ]);
+
+      // But GPU work with triangles, so we need two triangle instead
+      // prettier-ignore
+
+      const vertices = new Float32Array([
+        // x,    y
+        -0.8, -0.8,  // Triangle 1
+         0.8, -0.8,
+         0.8,  0.8,
+
+        -0.8, -0.8, // Triangle 2
+         0.8,  0.8,
+        -0.8,  0.8,
+      ])
+
+      // GPUBuffer: Buffer that is accessible by GPU
+      const vertexBuffer = device.createBuffer({
+        label: "Cell vertices", // label is used for debugging purpose as it appear in error messages
+        size: vertices.byteLength, // Float (4 bytes) * number of value (12)
+        // But Float32Array already calculate that in byteLength
+
+        // specify what this buffer will be used for
+        // VERTEX: vertex data
+        // COPY_DST: want to be able to copy data into it
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      });
+
+      // Copy the vertex data to the GPU
+      device.queue.writeBuffer(vertexBuffer, /*bufferOffset=*/ 0, vertices);
+
+      const vertexBufferLayout = {
+        // How many bytes one data point takes, so it know how many byte to skip
+        arrayStride: 8, // 2 float * 4 bytes
+        // Attribute describe how to extract a single attribute from the data point
+        attributes: [
+          // Can have more than one attribute
+          // This one is for position attribute
+          {
+            // Tell the GPU the format of the attribute
+            format: "float32x2", // vec2<f32> in the shader
+            // Used to calculate the offset of the attribute in data point
+            // Is useful when there's more than one attribute
+            // = how many bytes to skip from the start of the data point
+            offset: 0,
+            // Arbitrary number 0-15 that will be used to reference this attribute
+            // Need to be unique for each attribute
+            shaderLocation: 0, // location(0) in the shader
+          },
+        ],
+      };
+
+      // Create the shader modules
+      const cellShaderModule = device.createShaderModule({
+        label: "Cell shader", // optional but useful for debugging
+        code: `
+                @vertex
+                fn vertexMain(@location(0) pos: vec2f) -> @builtin(position) vec4f {
+                  return vec4f(pos, 0.0, 1.0);
+                }
+                @fragment
+                fn fragmentMain() -> @location(0) vec4f {
+                  return vec4f(1,0,0,1);
+                }
+              `,
+      });
+
+      // Create the render pipeline
+      const cellPipeline = device.createRenderPipeline({
+        label: "Cell pipeline",
+        layout: "auto", // if pipeline need more input than just the vertex buffer
+        // like texture or uniform, we need to define the layout
+        vertex: {
+          module: cellShaderModule, // the shader module to use
+          entryPoint: "vertexMain", // function name of the vertex shader
+          buffers: [vertexBufferLayout], // the layout of the vertex buffer
+          // not sure whether having multiple buffer is doing yet.
+        },
+        fragment: {
+          module: cellShaderModule,
+          entryPoint: "fragmentMain",
+          targets: [
+            {
+              format: canvasFormat,
+            },
+          ],
+        },
+      });
+
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [
+          {
+            view: context.getCurrentTexture().createView(),
+            clearValue: { r: 45 / 255, g: 108 / 255, b: 30 / 255, a: 1.0 },
+            loadOp: "clear", // means we want to clear the texture at the start of the pass
+            storeOp: "store", // means we want to store the result of the render pass
+          },
+        ],
+      });
+      pass.setPipeline(cellPipeline);
+      // 0 here is to say that we want 0th elem in buffers: [vertexBufferLayout],
+      pass.setVertexBuffer(0, vertexBuffer);
+      pass.draw(vertices.length / 2); // number of vertex to draw (6)
+      pass.end();
+
+      // Finish the command buffer and submit it to the GPU
+      device.queue.submit([encoder.finish()]);
+    </script>
+  </body>
+</html>
