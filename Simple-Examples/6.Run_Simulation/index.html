@@ -29,7 +29,7 @@
       // ------------------------------------
 
       // A grid of 4x4 cells
-      const GRID_SIZE = 256;
+      const GRID_SIZE = 64;
       const WORKGROUP_SIZE = 8;
 
       // prettier-ignore
@@ -74,7 +74,7 @@
 
       // Copy the vertex data to the GPU
       for (let i = 0; i < cellStateArray.length; i++) {
-        cellStateArray[i] = Math.random() > 0.8 ? 1 : 0;
+        cellStateArray[i] = Math.random() > 0.9 ? 1 : 0;
       }
       device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
       device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
@@ -149,11 +149,44 @@ fn cellIndex(cell: vec2u) -> u32 {
   return cell.y * u32(grid.x) + cell.x;
 }
 
+
+fn cellActive(x: u32, y: u32) -> u32 {
+  if (x >= u32(grid.x) || y >= u32(grid.y) || x < 0u || y < 0u) {
+    return 0u;
+  }
+  let index = cellIndex(vec2u(x, y));
+  return cellStateIn[index];
+}
+
 @compute  
 @workgroup_size(${WORKGROUP_SIZE}, ${WORKGROUP_SIZE})
 fn computeMain(@builtin(global_invocation_id) cell: vec3u) {
 // global_invocation_id will be in the form of (x, y, 0)
-cellStateOut[cellIndex(cell.xy)] = 1 - cellStateIn[cellIndex(cell.xy)];
+
+  let activeNeighbors = cellActive(cell.x+1, cell.y+1) +
+                                  cellActive(cell.x+1, cell.y) +
+                                  cellActive(cell.x+1, cell.y-1) +
+                                  cellActive(cell.x, cell.y-1) +
+                                  cellActive(cell.x-1, cell.y-1) +
+                                  cellActive(cell.x-1, cell.y) +
+                                  cellActive(cell.x-1, cell.y+1) +
+                                  cellActive(cell.x, cell.y+1);
+
+  let currentIndex = cellIndex(cell.xy);
+switch activeNeighbors {
+    case 2u: {
+      // Stay the same
+      cellStateOut[currentIndex] = cellStateIn[currentIndex];
+    }
+    case 3u: {
+      // Become active
+      cellStateOut[currentIndex] = 1u;
+    }
+    default: {
+      // Become inactive
+      cellStateOut[currentIndex] = 0u;
+    }
+  }
 }
         `,
       });
@@ -258,7 +291,7 @@ cellStateOut[cellIndex(cell.xy)] = 1 - cellStateIn[cellIndex(cell.xy)];
       // -------------------------------------
 
       let step = 0;
-      const updateInterval = 500; // ms
+      const updateInterval = 200; // ms
 
       function updateGrid() {
         const encoder = device.createCommandEncoder();
